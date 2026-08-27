@@ -63,3 +63,8 @@ python3 upload_to_redis.py
 
 ## Project Goals
 The code is written for educational purposes on online-course for web-developers dvmn.org.
+
+## Links
+@CosmicPicturesViewerBot
+vk.ru/club241107972
+

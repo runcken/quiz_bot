@@ -65,6 +65,6 @@ python3 upload_to_redis.py
 The code is written for educational purposes on online-course for web-developers dvmn.org.
 
 ## Links
-@CosmicPicturesViewerBot
-vk.ru/club241107972
+- @CosmicPicturesViewerBot
+- vk.ru/club241107972
 

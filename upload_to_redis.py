@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     except redis.exceptions.ConnectionError as e:
         print(f"Ошибка подключения: {e}")
-        exit()
+        return
 
 
     file_path = 'quiz.json'

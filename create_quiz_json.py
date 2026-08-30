@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     if not folder.exists():
         print(f"Папка '{folder_path}' не найдена!")
-        exit(1)
+        return
 
     all_questions = {}
     file_counter = 0
@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
     if not txt_files:
         print(f"В папке '{folder_path}' не найдено .txt файлов!")
-        exit(1)
+        return
 
     print(f"Найдено {len(txt_files)} файлов для обработки:")
 

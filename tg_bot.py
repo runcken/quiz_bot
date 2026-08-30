@@ -35,7 +35,7 @@ try:
     logger.info("Подключение к Redis установлено")
 except Exception as e:
     logger.error(f"Ошибка подключения к Redis: {e}")
-    exit(1)
+    return
 
 MENU, ANSWERING = range(2)
 

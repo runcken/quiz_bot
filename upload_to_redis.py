@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     try:
         with open(file_path, 'r', encoding='utf-8') as quiz_file:
-            quiz_dict = json.load(quiz_file)
+            quiz = json.load(quiz_file)
 
     except FileNotFoundError:
         print(f"Файл {file_path} не найден. Проверьте путь.")
@@ -38,7 +38,7 @@ if __name__ == '__main__':
         "id": i+1,
         "question": q,
         "answer": a
-        } for i, (q, a) in enumerate(quiz_dict.items())
+        } for i, (q, a) in enumerate(quiz.items())
     ]
 
     redis_key = "quiz:questions"
@@ -48,5 +48,5 @@ if __name__ == '__main__':
 
     print(f"Загружено {len(questions)} вопросов в ключ {redis_key}")
 
-    r.set("quiz:raw_dict", json.dumps(quiz_dict, ensure_ascii=False))
+    r.set("quiz:raw_dict", json.dumps(quiz, ensure_ascii=False))
     print("Резервная копия сохранена в ключ 'quiz:raw_dict'")

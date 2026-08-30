@@ -5,7 +5,7 @@ from pathlib import Path
 def parse_quiz_by_double_newlines(text: str) -> dict:
     blocks = text.split('\n\n')
 
-    quiz_dict = {}
+    quiz = {}
     current_question = None
 
     for block in blocks:
@@ -29,10 +29,10 @@ def parse_quiz_by_double_newlines(text: str) -> dict:
                 else block.split(':', 1)[-1].strip()
             )
 
-            quiz_dict[current_question] = answer
+            quiz[current_question] = answer
             current_question = None
 
-    return quiz_dict
+    return quiz
 
 
 if __name__ == '__main__':

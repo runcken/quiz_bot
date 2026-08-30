@@ -218,8 +218,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Folders
-quiz-questions
-
 # Files
 *.json

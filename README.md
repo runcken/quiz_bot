@@ -54,7 +54,7 @@ python3 vk_bot.py
 
 and you will can play quiz.
 
-For creating json file wih questions/answers from txt file use create_quiz_json.py script. Use upload_to_redis.py for upload json file to redis cloud database.
+For creating json file wih questions/answers from txt file use create_quiz_json.py script. You should have folder e.g. 'quiz-quistions' with .txt files with questions. Use upload_to_redis.py for upload json file to redis cloud database.
 
 ```
 python3 create_quiz_json.py

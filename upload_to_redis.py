@@ -13,10 +13,10 @@ if __name__ == '__main__':
 
     REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
 
-    r = redis.from_url(REDIS_URL, decode_responses=True)
+    redis_response = redis.from_url(REDIS_URL, decode_responses=True)
 
     try:
-        r.ping()
+        redis_response.ping()
         print("Успешное подключение к Redis Cloud!")
 
     except redis.exceptions.ConnectionError as e:
@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
     except FileNotFoundError:
         print(f"Файл {file_path} не найден. Проверьте путь.")
-        exit(1)
+        return
 
     questions = [{
         "id": i+1,
@@ -42,11 +42,11 @@ if __name__ == '__main__':
     ]
 
     redis_key = "quiz:questions"
-    r.delete(redis_key)
+    redis_response.delete(redis_key)
     for item in questions:
-        r.rpush(redis_key, json.dumps(item, ensure_ascii=False))
+        redis_response.rpush(redis_key, json.dumps(item, ensure_ascii=False))
 
     print(f"Загружено {len(questions)} вопросов в ключ {redis_key}")
 
-    r.set("quiz:raw_dict", json.dumps(quiz, ensure_ascii=False))
+    redis_response.set("quiz:raw_dict", json.dumps(quiz, ensure_ascii=False))
     print("Резервная копия сохранена в ключ 'quiz:raw_dict'")

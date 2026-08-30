@@ -38,6 +38,7 @@ def start(update: Update, context: CallbackContext):
 
 def handle_new_question_request(update: Update, context: CallbackContext):
     redis_client = context.bot_data['redis']
+    user_id = update.effective_user.id
     quiz_questions = redis_client.llen("quiz:questions")
     if quiz_questions == 0:
         update.message.reply_text(
@@ -46,13 +47,18 @@ def handle_new_question_request(update: Update, context: CallbackContext):
         )
         return MENU
 
-    index = random.randint(0, length - 1)
+    index = random.randint(0, quiz_questions - 1)
     item_json = redis_client.lindex("quiz:questions", index)
     try:
         item = json.loads(item_json)
     except json.JSONDecodeError:
         update.message.reply_text("Ошибка формата вопроса. Попробуйте позже.")
         return MENU
+
+    redis_client.hset(f"tg:user:{user_id}", mapping={
+        'current_question': item['question'],
+        'current_answer': item['answer']
+    })
 
     context.user_data['current_question'] = item['question']
     context.user_data['current_answer'] = item['answer']
@@ -99,6 +105,8 @@ def handle_score(update: Update, context: CallbackContext):
 
 def handle_solution_attempt(update: Update, context: CallbackContext):
     text = update.message.text
+    redis_client = context.bot_data['redis']
+    user_id = update.effective_user.id
 
     if 'current_answer' not in context.user_data:
         update.message.reply_text(
@@ -118,6 +126,7 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
         return ANSWERING
 
     if user_keyword == correct_keyword:
+        redis_client.hincrby(f"tg:user:{user_id}", 'score', 1)
         context.user_data['score'] = context.user_data.get('score', 0) + 1
         update.message.reply_text(
             "Правильно! Поздравляю! Для продолжения нажми «Новый вопрос»",

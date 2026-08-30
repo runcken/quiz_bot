@@ -58,8 +58,8 @@ def extract_keyword(text):
 
 
 def handle_new_question_request(user_id, vk, redis_client):
-    length = redis_client.llen("quiz:questions")
-    if length == 0:
+    player_state = redis_client.llen("quiz:questions")
+    if player_state == 0:
         vk.messages.send(
             user_id=user_id,
             message="В базе данных пока нет вопросов.",
@@ -68,7 +68,7 @@ def handle_new_question_request(user_id, vk, redis_client):
         )
         return MENU
 
-    index = random.randint(0, length - 1)
+    index = random.randint(0, player_state - 1)
     item_json = redis_client.lindex("quiz:questions", index)
     try:
         item = json.loads(item_json)
@@ -81,7 +81,7 @@ def handle_new_question_request(user_id, vk, redis_client):
         )
         return MENU
 
-    redis_client.hset(f"user:{user_id}", mapping={
+    redis_client.hset(f"vk:user:{user_id}", mapping={
         'current_question': item['question'],
         'current_answer': item['answer']
     })
@@ -106,7 +106,7 @@ def handle_surrender_in_menu(user_id, vk, redis_client):
 
 
 def handle_surrender_in_game(user_id, vk, redis_client):
-    player_state = redis_client.hgetall(f"user:{user_id}")
+    player_state = redis_client.hgetall(f"vk:user:{user_id}")
     if not player_state or 'current_answer' not in player_state:
         vk.messages.send(
             user_id=user_id,
@@ -127,7 +127,7 @@ def handle_surrender_in_game(user_id, vk, redis_client):
 
 
 def handle_score(user_id, vk, redis_client):
-    score = redis_client.hget(f"user:{user_id}", 'score')
+    score = redis_client.hget(f"vk:user:{user_id}", 'score')
     if score is None:
         score = 0
     vk.messages.send(
@@ -140,7 +140,7 @@ def handle_score(user_id, vk, redis_client):
 
 
 def handle_solution_attempt(user_id, vk, text, redis_client):
-    player_state = redis_client.hgetall(f"user:{user_id}")
+    player_state = redis_client.hgetall(f"vk:user:{user_id}")
     if not player_state or 'current_answer' not in player_state:
         vk.messages.send(
             user_id=user_id,
@@ -163,7 +163,7 @@ def handle_solution_attempt(user_id, vk, text, redis_client):
         return ANSWERING
 
     if user_keyword == correct_keyword:
-        redis_client.hincrby(f"user:{user_id}", 'score', 1)
+        redis_client.hincrby(f"vk:user:{user_id}", 'score', 1)
         vk.messages.send(
             user_id=user_id,
             message="Правильно! Для продолжения нажми «Новый вопрос»",

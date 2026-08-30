@@ -10,33 +10,24 @@ from vk_api import VkApi
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
+from utils import extract_keyword
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+
 logger = logging.getLogger(__name__)
+
 
 env = Env()
 env.read_env()
 
+VK_TOKEN = env.str('VK_TOKEN')
+GROUP_ID = env.int('VK_GROUP_ID')
 REDIS_DB_URL = env.str('REDIS_DB_URL')
 DB_PASSWORD = env.str('DB_PASSWORD')
 DB_PORT = env.str('DB_PORT')
 REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
-VK_TOKEN = env.str('VK_TOKEN')
-GROUP_ID = env.int('VK_GROUP_ID')
 
 if not VK_TOKEN or not GROUP_ID or not REDIS_URL:
     raise ValueError("Не заданы переменные VK_TOKEN, GROUP_ID или REDIS_URL")
-
-redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
-try:
-    redis_client.ping()
-    logger.info("Подключение к Redis установлено")
-except Exception as e:
-    logger.error(f"Ошибка подключения к Redis: {e}")
-    return
 
 MENU = 'menu'
 ANSWERING = 'answering'
@@ -66,7 +57,7 @@ def extract_keyword(text):
     return first.lower()
 
 
-def handle_new_question_request(user_id, vk):
+def handle_new_question_request(user_id, vk, redis_client):
     length = redis_client.llen("quiz:questions")
     if length == 0:
         vk.messages.send(
@@ -104,19 +95,19 @@ def handle_new_question_request(user_id, vk):
     return ANSWERING
 
 
-def handle_surrender_in_menu(user_id, vk):
+def handle_surrender_in_menu(user_id, vk, redis_client):
     vk.messages.send(
         user_id=user_id,
-        message="Нажмите «Новый вопрос».",
+        message="Вы не начали отвечать на вопрос. Нажмите «Новый вопрос».",
         keyboard=get_main_keyboard(),
         random_id=0
     )
     return MENU
 
 
-def handle_surrender_in_game(user_id, vk):
-    user_data = redis_client.hgetall(f"user:{user_id}")
-    if not user_data or 'current_answer' not in user_data:
+def handle_surrender_in_game(user_id, vk, redis_client):
+    player_state = redis_client.hgetall(f"user:{user_id}")
+    if not player_state or 'current_answer' not in player_state:
         vk.messages.send(
             user_id=user_id,
             message="Что-то пошло не так. Нажмите «Новый вопрос».",
@@ -125,17 +116,17 @@ def handle_surrender_in_game(user_id, vk):
         )
         return MENU
 
-    correct = user_data['current_answer']
+    correct = player_state['current_answer']
     vk.messages.send(
         user_id=user_id,
         message=f"Правильный ответ: {correct}",
         keyboard=get_main_keyboard(),
         random_id=0
     )
-    return handle_new_question_request(user_id, vk)
+    return handle_new_question_request(user_id, vk, redis_client)
 
 
-def handle_score(user_id, vk):
+def handle_score(user_id, vk, redis_client):
     score = redis_client.hget(f"user:{user_id}", 'score')
     if score is None:
         score = 0
@@ -148,9 +139,9 @@ def handle_score(user_id, vk):
     return None
 
 
-def handle_solution_attempt(user_id, vk, text):
-    user_data = redis_client.hgetall(f"user:{user_id}")
-    if not user_data or 'current_answer' not in user_data:
+def handle_solution_attempt(user_id, vk, text, redis_client):
+    player_state = redis_client.hgetall(f"user:{user_id}")
+    if not player_state or 'current_answer' not in player_state:
         vk.messages.send(
             user_id=user_id,
             message="Сначала нажмите «Новый вопрос».",
@@ -160,7 +151,7 @@ def handle_solution_attempt(user_id, vk, text):
         return ANSWERING
 
     user_keyword = extract_keyword(text)
-    correct_keyword = extract_keyword(user_data['current_answer'])
+    correct_keyword = extract_keyword(player_state['current_answer'])
 
     if not user_keyword or not correct_keyword:
         vk.messages.send(
@@ -189,7 +180,7 @@ def handle_solution_attempt(user_id, vk, text):
     return ANSWERING
 
 
-def handle_unknown_in_menu(user_id, vk):
+def handle_unknown_in_menu(user_id, vk, redis_client):
     vk.messages.send(
         user_id=user_id,
         message="Пожалуйста, используйте кнопки меню.",
@@ -199,74 +190,99 @@ def handle_unknown_in_menu(user_id, vk):
     return MENU
 
 
+def choose_text(text, user_id, vk, redis_client):
+    if text == "Новый вопрос":
+        return handle_new_question_request(user_id, vk, redis_client)
+    elif text == "Сдаться":
+        return None
+    elif text == "Мой счет":
+        return handle_score(user_id, vk, redis_client)
+    else:
+        return None
+
+
+def process_event(event, vk, redis_client):
+    message = event.obj.message
+    user_id = message['from_id']
+    if user_id == -GROUP_ID:
+        return
+
+    text = message['text'].strip()
+
+    state = redis_client.hget(f"user:{user_id}", 'state')
+    if state is None:
+        state = MENU
+        redis_client.hset(f"user:{user_id}", 'state', state)
+
+    if state == MENU:
+        if text == "Сдаться":
+            new_state = handle_surrender_in_menu(user_id, vk, redis_client)
+        else:
+            new_state = choose_text(text, user_id, vk, redis_client)
+            if new_state is None:
+                new_state = handle_unknown_in_menu(user_id, vk, redis_client)
+    elif state == ANSWERING:
+        if text == "Сдаться":
+            new_state = handle_surrender_in_game(user_id, vk, redis_client)
+        elif text == "Новый вопрос" or text == "Мой счет":
+            new_state = choose_text(text, user_id, vk, redis_client)
+        else:
+            new_state = handle_solution_attempt(
+                user_id,
+                vk,
+                text,
+                redis_client
+            )
+    else:
+        new_state = MENU
+
+    if new_state is not None:
+        redis_client.hset(f"user:{user_id}", 'state', new_state)
+
+
 def main():
+    env = Env()
+    env.read_env()
+
+    VK_TOKEN = env.str('VK_TOKEN')
+    GROUP_ID = env.int('VK_GROUP_ID')
+    REDIS_DB_URL = env.str('REDIS_DB_URL')
+    DB_PASSWORD = env.str('DB_PASSWORD')
+    DB_PORT = env.str('DB_PORT')
+    REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
+
+    if not VK_TOKEN or not GROUP_ID or not REDIS_URL:
+        raise ValueError("Не заданы переменные VK_TOKEN, GROUP_ID или REDIS_URL")
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+
+    redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
+    try:
+        redis_client.ping()
+        logger.info("Подключение к Redis установлено")
+    except Exception as e:
+        logger.error(f"Ошибка подключения к Redis: {e}")
+        return
+
     vk_session = VkApi(token=VK_TOKEN)
     vk = vk_session.get_api()
 
-    logger.info("VK бот запущен...")
+    logger.info("VK бот запущен и готов к работе")
 
     while True:
         try:
             longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
             for event in longpoll.listen():
                 if event.type == VkBotEventType.MESSAGE_NEW:
-                    message = event.obj.message
-                    user_id = message['from_id']
-                    if user_id == -GROUP_ID:
-                        continue
-                    text = message['text'].strip()
-
-                    state = redis_client.hget(f"user:{user_id}", 'state')
-                    if state is None:
-                        state = MENU
-                        redis_client.hset(f"user:{user_id}", 'state', state)
-
-                    if state == MENU:
-                        if text == "Новый вопрос":
-                            new_state = handle_new_question_request(
-                                user_id,
-                                vk
-                            )
-                        elif text == "Сдаться":
-                            new_state = handle_surrender_in_menu(user_id, vk)
-                        elif text == "Мой счет":
-                            new_state = handle_score(user_id, vk)
-                        else:
-                            new_state = handle_unknown_in_menu(user_id, vk)
-                    elif state == ANSWERING:
-                        if text == "Новый вопрос":
-                            new_state = handle_new_question_request(
-                                user_id,
-                                vk
-                            )
-                        elif text == "Сдаться":
-                            new_state = handle_surrender_in_game(user_id, vk)
-                        elif text == "Мой счет":
-                            new_state = handle_score(user_id, vk)
-                        else:
-                            new_state = handle_solution_attempt(
-                                user_id,
-                                vk,
-                                text
-                            )
-                    else:
-                        new_state = MENU
-
-                    if new_state is not None:
-                        redis_client.hset(
-                            f"user:{user_id}",
-                            'state',
-                            new_state
-                        )
-
+                    process_event(event, vk, redis_client)
         except ReadTimeout:
             logger.warning("Таймаут Long Poll. Переподключаемся...")
             time.sleep(2)
             continue
         except Exception as e:
-            logger.error(
-                f"Критическая ошибка в Long Poll: {e}. Перезапуск через 5 сек"
-            )
+            logger.error(f"Ошибка в Long Poll: {e}. Перезапуск через 5 сек")
             time.sleep(5)
             continue
 

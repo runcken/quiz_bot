@@ -21,8 +21,6 @@ if __name__ == '__main__':
 
     except redis.exceptions.ConnectionError as e:
         print(f"Ошибка подключения: {e}")
-        return
-
 
     file_path = 'quiz.json'
 
@@ -32,7 +30,6 @@ if __name__ == '__main__':
 
     except FileNotFoundError:
         print(f"Файл {file_path} не найден. Проверьте путь.")
-        return
 
     questions = [{
         "id": i+1,

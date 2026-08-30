@@ -10,32 +10,10 @@ from telegram.ext import (
     CallbackContext, ConversationHandler
 )
 
+from utils import extract_keyword
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+
 logger = logging.getLogger(__name__)
-
-env = Env()
-env.read_env()
-
-REDIS_DB_URL = env.str('REDIS_DB_URL')
-DB_PASSWORD = env.str('DB_PASSWORD')
-DB_PORT = env.str('DB_PORT')
-TOKEN = env.str('TG_TOKEN')
-REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
-
-if not TOKEN or not REDIS_URL:
-    raise ValueError("Не заданы переменные окружения TG_TOKEN или REDIS_URL")
-
-redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
-try:
-    redis_client.ping()
-    logger.info("Подключение к Redis установлено")
-except Exception as e:
-    logger.error(f"Ошибка подключения к Redis: {e}")
-    return
 
 MENU, ANSWERING = range(2)
 
@@ -46,21 +24,6 @@ def get_main_keyboard():
         ["Мой счет"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-
-def extract_keyword(text):
-    if not text:
-        return ''
-    text = re.sub(r'\([^)]*\)', '', text)
-    text = re.sub(r'\[[^]]*\]', '', text)
-    for ch in ['"', "'", '`', '“', '”', '«', '»']:
-        text = text.replace(ch, '')
-    words = text.split()
-    if not words:
-        return ''
-    first = words[0]
-    first = first.strip('.,!?;:')
-    return first.lower()
 
 
 def start(update: Update, context: CallbackContext):
@@ -74,8 +37,9 @@ def start(update: Update, context: CallbackContext):
 
 
 def handle_new_question_request(update: Update, context: CallbackContext):
-    length = redis_client.llen("quiz:questions")
-    if length == 0:
+    redis_client = context.bot_data['redis']
+    quiz_questions = redis_client.llen("quiz:questions")
+    if quiz_questions == 0:
         update.message.reply_text(
             "В базе данных пока нет вопросов.",
             reply_markup=get_main_keyboard()
@@ -184,8 +148,34 @@ def error_handler(update, context):
 
 
 def main():
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+
+    env = Env()
+    env.read_env()
+
+    REDIS_DB_URL = env.str('REDIS_DB_URL')
+    DB_PASSWORD = env.str('DB_PASSWORD')
+    DB_PORT = env.str('DB_PORT')
+    TOKEN = env.str('TG_TOKEN')
+    REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
+
+    if not TOKEN or not REDIS_URL:
+        raise ValueError("Не заданы переменные TG_TOKEN или REDIS_URL")
+
+    redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
+    try:
+        redis_client.ping()
+        logger.info("Подключение к Redis установлено")
+    except Exception as e:
+        logger.error(f"Ошибка подключения к Redis: {e}")
+
     updater = Updater(token=TOKEN, use_context=True)
     dp = updater.dispatcher
+
+    dp.bot_data['redis'] = redis_client
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],

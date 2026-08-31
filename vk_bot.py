@@ -15,20 +15,6 @@ from utils import extract_keyword
 
 logger = logging.getLogger(__name__)
 
-
-env = Env()
-env.read_env()
-
-VK_TOKEN = env.str('VK_TOKEN')
-GROUP_ID = env.int('VK_GROUP_ID')
-REDIS_DB_URL = env.str('REDIS_DB_URL')
-DB_PASSWORD = env.str('DB_PASSWORD')
-DB_PORT = env.str('DB_PORT')
-REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
-
-if not VK_TOKEN or not GROUP_ID or not REDIS_URL:
-    raise ValueError("Не заданы переменные VK_TOKEN, GROUP_ID или REDIS_URL")
-
 MENU = 'menu'
 ANSWERING = 'answering'
 
@@ -40,21 +26,6 @@ def get_main_keyboard():
     keyboard.add_line()
     keyboard.add_button('Мой счет', color=VkKeyboardColor.SECONDARY)
     return keyboard.get_keyboard()
-
-
-def extract_keyword(text):
-    if not text:
-        return ''
-    text = re.sub(r'\([^)]*\)', '', text)
-    text = re.sub(r'\[[^]]*\]', '', text)
-    for ch in ['"', "'", '`', '“', '”', '«', '»']:
-        text = text.replace(ch, '')
-    words = text.split()
-    if not words:
-        return ''
-    first = words[0]
-    first = first.strip('.,!?;:')
-    return first.lower()
 
 
 def handle_new_question_request(user_id, vk, redis_client):
@@ -201,7 +172,7 @@ def choose_text(text, user_id, vk, redis_client):
         return None
 
 
-def process_event(event, vk, redis_client):
+def process_event(event, vk, redis_client, GROUP_ID):
     message = event.obj.message
     user_id = message['from_id']
     if user_id == -GROUP_ID:
@@ -209,10 +180,10 @@ def process_event(event, vk, redis_client):
 
     text = message['text'].strip()
 
-    state = redis_client.hget(f"user:{user_id}", 'state')
+    state = redis_client.hget(f"vk:user:{user_id}", 'state')
     if state is None:
         state = MENU
-        redis_client.hset(f"user:{user_id}", 'state', state)
+        redis_client.hset(f"vk:user:{user_id}", 'state', state)
 
     if state == MENU:
         if text == "Сдаться":
@@ -237,7 +208,7 @@ def process_event(event, vk, redis_client):
         new_state = MENU
 
     if new_state is not None:
-        redis_client.hset(f"user:{user_id}", 'state', new_state)
+        redis_client.hset(f"vk:user:{user_id}", 'state', new_state)
 
 
 def main():
@@ -253,6 +224,7 @@ def main():
 
     if not VK_TOKEN or not GROUP_ID or not REDIS_URL:
         raise ValueError("Не заданы переменные VK_TOKEN, GROUP_ID или REDIS_URL")
+
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
@@ -276,7 +248,7 @@ def main():
             longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
             for event in longpoll.listen():
                 if event.type == VkBotEventType.MESSAGE_NEW:
-                    process_event(event, vk, redis_client)
+                    process_event(event, vk, redis_client, GROUP_ID)
         except ReadTimeout:
             logger.warning("Таймаут Long Poll. Переподключаемся...")
             time.sleep(2)

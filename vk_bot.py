@@ -172,10 +172,10 @@ def choose_text(text, user_id, vk, redis_client):
         return None
 
 
-def process_event(event, vk, redis_client, GROUP_ID):
+def process_event(event, vk, redis_client, group_id):
     message = event.obj.message
     user_id = message['from_id']
-    if user_id == -GROUP_ID:
+    if user_id == -group_id:
         return
 
     text = message['text'].strip()
@@ -216,14 +216,14 @@ def main():
     env.read_env()
 
     VK_TOKEN = env.str('VK_TOKEN')
-    GROUP_ID = env.int('VK_GROUP_ID')
+    group_id = env.int('VK_group_id')
     REDIS_DB_URL = env.str('REDIS_DB_URL')
     DB_PASSWORD = env.str('DB_PASSWORD')
     DB_PORT = env.str('DB_PORT')
     REDIS_URL = f"redis://default:{DB_PASSWORD}@{REDIS_DB_URL}:{DB_PORT}"
 
-    if not VK_TOKEN or not GROUP_ID or not REDIS_URL:
-        raise ValueError("Не заданы переменные VK_TOKEN, GROUP_ID или REDIS_URL")
+    if not VK_TOKEN or not group_id or not REDIS_URL:
+        raise ValueError("Не заданы переменные VK_TOKEN, group_id или REDIS_URL")
 
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -245,10 +245,10 @@ def main():
 
     while True:
         try:
-            longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
+            longpoll = VkBotLongPoll(vk_session, group_id=group_id)
             for event in longpoll.listen():
                 if event.type == VkBotEventType.MESSAGE_NEW:
-                    process_event(event, vk, redis_client, GROUP_ID)
+                    process_event(event, vk, redis_client, group_id)
         except ReadTimeout:
             logger.warning("Таймаут Long Poll. Переподключаемся...")
             time.sleep(2)
